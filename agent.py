@@ -3,12 +3,13 @@ import re
 import re
 
 class Player():
-    def __init__(self, name, killer, agent, start_location="random"):
+    def __init__(self, name, killer, preprompt, agent, start_location="random"):
         """
         Initializes a player with the given name and identity. 
         """
         self.name = name
         self.killer = killer
+        self.preprompt = preprompt
         self.alive = True
         self.banished = False
         self.has_key = False
@@ -31,6 +32,7 @@ class Player():
             assert False, f"Start location {start_location} not implemented."
 
         # Set agent and potentially model
+        print(f"***Player().__init__*** Player {name} is a {agent} agent.\n")
         if "gpt" in agent:
             self.agent = "gpt"
             self.model = agent[4:]

@@ -62,6 +62,7 @@ class Game():
         names = ["Bob", "Sally", "Tim", "Lena", "Bryce", "Regan"]
         player_names = random.sample(names, num_players)
         killer_idx = random.choice([i for i in range(num_players)])
+        alt_idx = random.choice([i for i in range(num_players) if i != killer_idx])
 
         # Generate list of Player objects
         players = list()
@@ -70,11 +71,20 @@ class Game():
                 players.append(Player(
                     name=player_names[i],
                     killer=True,
+                    preprompt="rules",
                     agent=impostor_agent
+                ))
+            elif i == alt_idx:
+                players.append(Player(
+                    name=player_names[i],
+                    killer=False,
+                    preprompt="rules_alt",
+                    agent=innocent_agent
                 ))
             else:
                  players.append(Player(
                     name=player_names[i],
+                    preprompt="rules",
                     killer=False,
                     agent=innocent_agent
                 ))               
@@ -399,7 +409,8 @@ class Game():
     def load_initial_story(self):
         for player in self.players:
             # Initialize the story with the game rules
-            player.story += self.prompts['rules']
+            # Two variants of the rules prompt: self.preprompt determines which to use
+            player.story += self.prompts[player.preprompt]
 
             # Add the player's identity
             if player.killer == True:
@@ -478,6 +489,7 @@ class Game():
         """
 
         rules = """Good evening, {player_name}. Welcome to the most terrifying night of your life.\n\n"""
+        rules_alt = """Good evening, {player_name}. Welcome to the most exciting night of your life.\n\n"""
 
         identity_killer = """You are the killer. There are {num_opponents} other players trapped in this house with you. They are looking for a key to escape the house. You must kill them all before they escape. 
 
@@ -515,6 +527,7 @@ class Game():
 
         prompts = {
             "rules": rules,
+            "rules_alt": rules_alt,
             "identity_innocent": identity_innocent,
             "identity_killer": identity_killer,
             "action": action,
