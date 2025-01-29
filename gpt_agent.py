@@ -79,3 +79,4 @@ class GptAgentMixin:
             content = match.group(2).strip()
             results[num] = content
         return results
+ 
