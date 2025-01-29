@@ -386,4 +386,3 @@ class Player(GptAgentMixin):
                     duplicates += 1
                 visited.add(loc)
             self.eval['duplicate_search_rate'] = duplicates / len(search_actions)
- 

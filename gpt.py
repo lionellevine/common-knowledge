@@ -246,4 +246,3 @@ class GPT:
             prompt = prompt.replace("...\n\n...\n\n", "...\n\n")
 
         return prompt
- 

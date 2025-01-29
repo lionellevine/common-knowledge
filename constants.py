@@ -14,4 +14,3 @@ SEARCH_PREFIX = "Search "
 GO_TO_PREFIX = "Go to "
 UNLOCK_DOOR_ACTION = "Unlock the door to escape and win the game!"
 ESCAPE_DOOR_ACTION = "The door is unlocked! Escape and win the game."
- 
