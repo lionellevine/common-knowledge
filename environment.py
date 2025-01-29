@@ -499,3 +499,4 @@ class Game:
             "player_banished": player_banished,
             "killer_banished": killer_banished,
         }
+ 
