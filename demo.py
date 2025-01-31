@@ -1,3 +1,5 @@
+#demo.py
+
 import logging
 
 from environment import Game
@@ -15,9 +17,11 @@ def main():
         Player("Jim",  killer=False, preprompt="rules_alt",  agent="gpt-4o-mini-2024-07-18"),
         Player("Dave", killer=False, preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
         Player("Mira", killer=True,  preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
-        Player("Harry",  killer=False, preprompt="rules_alt",  agent="gpt-4o-mini-2024-07-18"),
-        Player("Snape",  killer=True, preprompt="rules_alt",  agent="gpt-4o-mini-2024-07-18"),
-        Player("Ron",  killer=False, preprompt="rules_alt",  agent="gpt-4o-mini-2024-07-18")
+        Player("Archie", killer=False, preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
+        Player("Tom", killer=False, preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
+        Player("Sarah", killer=False, preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
+        Player("Gabriel", killer=False, preprompt="rules",      agent="gpt-4o-mini-2024-07-18"),
+        Player("David", killer=True, preprompt="rules",      agent="gpt-4o-mini-2024-07-18")
     ]
 
     # Load them into the game
