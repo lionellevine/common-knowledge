@@ -1,7 +1,5 @@
 # eval.py
-
 import os
-import sys
 import random
 import time
 import logging
@@ -15,10 +13,9 @@ from agent import Player
 warnings.simplefilter(action='ignore', category=FutureWarning)
 logging.basicConfig(level=logging.INFO)
 
-
 def run_job(num_games, eval_cols):
     """
-    Runs `num_games`, each time using exactly 4 named players [Jacob,Kai,Archie,Luca].
+    Runs `num_games`, each time using exactly 4 named players [Jacob, Kai, Archie, Luca].
     - Randomly pick 1 as killer
     - Randomly pick 1 as 'rules_alt' user
     - The rest are 'rules' + not killer
@@ -27,9 +24,6 @@ def run_job(num_games, eval_cols):
     eval_dict = {col: [] for col in eval_cols}
 
     # We'll accumulate alt vs. rules data for final summary
-    # For each player row, we know "preprompt" => either "rules_alt" or "rules"
-    # We'll track their total "vote_rate_for_killer", number of players, etc.
-    # We'll do that in 'overall_summary' mapping from "rules_alt"|"rules" => a dict of sums
     overall_summary = {
         "rules_alt": {"count": 0, "sum_vote_for_killer": 0.0},
         "rules":     {"count": 0, "sum_vote_for_killer": 0.0},
@@ -42,7 +36,7 @@ def run_job(num_games, eval_cols):
         name_list = ["Jacob", "Kai", "Archie", "Luca"]
         random.shuffle(name_list)  # shuffle the 4 names
         killer_name = random.choice(name_list)  # pick 1 killer
-        alt_name = random.choice(name_list)     # pick 1 to have rules_alt (could be the same or not, up to you)
+        alt_name = random.choice(name_list)     # pick 1 to have rules_alt
 
         # 2) Build the 4 players
         players = []
@@ -53,7 +47,7 @@ def run_job(num_games, eval_cols):
                 name=nm,
                 killer=is_killer,
                 preprompt=pp,
-                agent="gpt-4o-mini-2024-07-18"  # or "gpt" or whatever
+                agent="gpt-4o-mini-2024-07-18"  # or "gpt" or whichever
             )
             players.append(p)
 
@@ -74,18 +68,14 @@ def run_job(num_games, eval_cols):
             insert_player_result_row(eval_dict, game_idx, runtime, 4, True, player_res)
 
             # We'll also update overall_summary
-            pre = player_res.get("preprompt", "rules")  # either 'rules_alt' or 'rules'
-            # just in case, if it's something else, group as 'rules'
+            pre = player_res.get("preprompt", "rules")
             if pre not in ("rules_alt", "rules"):
                 pre = "rules"
 
-            # vote_rate_for_killer is how often they guessed the killer.
-            # We'll add to the sums
             overall_summary[pre]["count"] += 1
             overall_summary[pre]["sum_vote_for_killer"] += player_res.get("vote_rate_for_killer", 0.0)
 
-        # 7) Insert a Stats row from the environment code (like killed=, banished=, etc.)
-        #    We can do something similar to your existing code: e.g. sum up banished, killed, etc.
+        # 7) Insert a Stats row from the environment code
         banished_count = sum(r.get("banished", 0) for r in results)
         killed_count   = sum(r.get("killed", 0) for r in results)
         escaped_count  = sum(r.get("escaped", 0) for r in results)
@@ -99,7 +89,7 @@ def run_job(num_games, eval_cols):
         )
         insert_special_row(eval_dict, stats_text)
 
-        # 8) Insert a "Comparison" row for alt vs. normal in this single game
+        # 8) Insert a "Comparison" row for alt vs. normal in this game
         alt_vfk   = 0.0
         alt_count = 0
         rules_vfk   = 0.0
@@ -113,15 +103,8 @@ def run_job(num_games, eval_cols):
                 rules_vfk   += r.get("vote_rate_for_killer", 0.0)
                 rules_count += 1
 
-        if alt_count > 0:
-            alt_avg = alt_vfk / alt_count
-        else:
-            alt_avg = 0.0
-
-        if rules_count > 0:
-            rules_avg = rules_vfk / rules_count
-        else:
-            rules_avg = 0.0
+        alt_avg = alt_vfk / alt_count if alt_count > 0 else 0.0
+        rules_avg = rules_vfk / rules_count if rules_count > 0 else 0.0
 
         comp_text = (
             f"======================================= COMPARISON FOR GAME #{game_idx} =======================================\n"
@@ -137,44 +120,28 @@ def run_job(num_games, eval_cols):
 
     return eval_dict, overall_summary
 
-
 def insert_game_header_row(eval_dict, game_index, name_list, alt_name, killer_name):
-    """
-    Insert a row describing which 4 players are in this game, who is the killer, who is alt, etc.
-    """
     line1 = f"============================================== Game #{game_index} =============================================="
     line2 = f"NumPlayers=4, Discussion=True"
     lines_players = []
     for nm in name_list:
         is_k = (nm == killer_name)
         is_alt = (nm == alt_name)
-        lines_players.append(
-            f"  - {nm}: killer={is_k}, alt={is_alt}"
-        )
+        lines_players.append(f"  - {nm}: killer={is_k}, alt={is_alt}")
     player_list_block = "\n".join(lines_players)
     final_text = f"{line1}\n{line2}\nPlayers:\n{player_list_block}"
-
     insert_special_row(eval_dict, final_text)
 
-
 def insert_player_result_row(eval_dict, game_idx, runtime, num_players, discussion, player_res):
-    """
-    Creates a multiline "key: value" text in 'PlayerData' column for normal rows.
-    """
-
     data_str = build_player_data_str(game_idx, runtime, num_players, discussion, player_res)
-    eval_dict["RowNotes"].append("")     # no special note, it's a normal row
+    eval_dict["RowNotes"].append("")
     eval_dict["PlayerData"].append(data_str)
-
-    # FullStoryLog, etc.
     eval_dict["FullStoryLog"].append(player_res.get("story", ""))
     eval_dict["ActionsTaken"].append(player_res.get("actions", []))
     eval_dict["VotesCast"].append(player_res.get("votes", []))
     eval_dict["WitnessDuringVote"].append(player_res.get("witness_during_vote", []))
 
-
 def build_player_data_str(game_idx, runtime, num_players, discussion, player_res):
-    """Return multiline 'key: value' block for a single player's final result."""
     lines = []
     lines.append(f"GameNumber: {game_idx}")
     lines.append(f"RuntimeSec: {runtime:.2f}")
@@ -192,10 +159,7 @@ def build_player_data_str(game_idx, runtime, num_players, discussion, player_res
     lines.append(f"NumEscaped: {player_res.get('num_escaped',0)}")
     lines.append(f"InvalidVotesForEliminated: {player_res.get('invalid_votes_for_eliminated',0)}")
     mk = player_res.get("multiple_killers", [])
-    if isinstance(mk, list):
-        mk_str = ",".join(mk)
-    else:
-        mk_str = str(mk)
+    mk_str = ",".join(mk) if isinstance(mk, list) else str(mk)
     lines.append(f"MultipleKillers: {mk_str}")
     lines.append(f"DuplicateSearchRate: {player_res.get('duplicate_search_rate',0.0)}")
     lines.append(f"VoteRateForSelf: {player_res.get('vote_rate_for_self',0.0)}")
@@ -204,26 +168,20 @@ def build_player_data_str(game_idx, runtime, num_players, discussion, player_res
     lines.append(f"NonWitnessVoteRateForKiller: {player_res.get('non_witness_vote_rate_for_killer',0.0)}")
     return "\n".join(lines)
 
-
 def insert_special_row(eval_dict, text_value):
-    """Inserts a row with multiline text in RowNotes. PlayerData is empty, other columns blank."""
     eval_dict["RowNotes"].append(text_value)
     eval_dict["PlayerData"].append("")
-
     eval_dict["FullStoryLog"].append("")
     eval_dict["ActionsTaken"].append([])
     eval_dict["VotesCast"].append([])
     eval_dict["WitnessDuringVote"].append([])
 
-
 def get_save_path():
-    """Creates unique path in 'results/' directory."""
     save_dir = 'results'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     file_count = sum(os.path.isfile(os.path.join(save_dir, f)) for f in os.listdir(save_dir))
     return os.path.join(save_dir, f"{file_count}.csv")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -231,33 +189,23 @@ if __name__ == "__main__":
     parser.add_argument('--num_games', type=int, default=3, help="How many games in this job")
     args = parser.parse_args()
 
-    # We'll ignore 'job_number' except for reading a schedule if you want. For simplicity, let's just run num_games:
     job_number = args.job_number
     num_games  = args.num_games
 
-    # Our final columns:
     results_cols = [
-        "RowNotes",       # multiline text for headers/stats/special
-        "PlayerData",     # multiline "key: value" for normal players
+        "RowNotes",
+        "PlayerData",
         "FullStoryLog",
         "ActionsTaken",
         "VotesCast",
         "WitnessDuringVote",
     ]
-    # For demonstration, we won't parse a CSV schedule. We'll just run `num_games`.
-    # If you prefer, you can read some "jobs/<job_number>.csv" as well.
-
     eval_dict, overall_summary = run_job(num_games, results_cols)
-
-    # Convert to DataFrame
     df = pd.DataFrame(eval_dict, columns=results_cols)
-
-    # Save partial
     save_path = get_save_path()
     df.to_csv(save_path, index=False)
     print(f"\nSaved intermediate CSV to {save_path}\n")
 
-    # === After all games, produce final summary comparing alt vs. rules overall ===
     alt_count = overall_summary["rules_alt"]["count"]
     alt_vsum  = overall_summary["rules_alt"]["sum_vote_for_killer"]
     rules_count = overall_summary["rules"]["count"]
@@ -272,11 +220,7 @@ if __name__ == "__main__":
         f"  rules_count={rules_count}, rules_avg_vote_for_killer={rules_avg:.2f}\n"
         "-----------------------------------"
     )
-
-    # Insert as final row
     df.loc[len(df)] = [final_text, "", "", [], [], []]
-
-    # Overwrite CSV
     df.to_csv(save_path, index=False)
     print("Appended final summary at bottom.")
     print(f"Final CSV saved to {save_path}")

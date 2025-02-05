@@ -29,7 +29,6 @@ class GptAgentMixin:
         if argmax:
             return int(max(option_probs, key=option_probs.get))
 
-        # Weighted random
         rand_val = random.random()
         cumulative = 0.0
         for act, pr in option_probs.items():

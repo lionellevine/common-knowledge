@@ -117,6 +117,30 @@ class Player(GptAgentMixin):
         self.gpt = gpt
 
     # --------------------------------------------------------------------------
+    # Helper for CLI input with max retries
+    # --------------------------------------------------------------------------
+    def _get_cli_choice(self, prompt: str, valid: List[int]) -> Optional[int]:
+        attempts = 0
+        max_attempts = 3
+        while attempts < max_attempts:
+            print(self.story)
+            print(prompt)
+            print(f"Please input one of: {valid}")
+            user_in = input().strip()
+            try:
+                choice = int(user_in)
+                if choice in valid:
+                    return choice
+                else:
+                    print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+            attempts += 1
+        fallback_choice = random.choice(valid)
+        print(f"No valid input received after {max_attempts} attempts. Defaulting to {fallback_choice}.")
+        return fallback_choice
+
+    # --------------------------------------------------------------------------
     # Actions
     # --------------------------------------------------------------------------
     def get_action(self, action_prompt: str) -> str:
@@ -130,10 +154,15 @@ class Player(GptAgentMixin):
             self.awaiting_response = False
             return "No Action"
 
-        # If agent is API => single attempt, else loop
         chosen_int = None
-        while chosen_int is None:
+        attempts = 0
+        max_attempts = 5
+        while chosen_int is None and attempts < max_attempts:
             chosen_int = self._fetch_action_int(valid_actions, action_prompt)
+            attempts += 1
+        if chosen_int is None:
+            chosen_int = random.choice(valid_actions)
+            logger.warning("%s exceeded maximum attempts. Using fallback action: %s", self.name, chosen_int)
         action_text = self._decode_action(action_prompt, chosen_int)
 
         self.actions.append(action_text)
@@ -152,26 +181,14 @@ class Player(GptAgentMixin):
         if self.agent == AgentType.RANDOM.value:
             return random.choice(valid_actions) if valid_actions else None
         elif self.agent == AgentType.CLI.value:
-            return self._get_cli_action(valid_actions, action_prompt)
+            return self._get_cli_choice(action_prompt, valid_actions)
         elif self.agent == AgentType.GPT.value:
             return self.get_gpt_action(action_prompt)
         elif self.agent == AgentType.API.value:
-            return None
+            return random.choice(valid_actions) if valid_actions else None
 
         logger.warning("Invalid or None action chosen by %s. Using None", self.name)
         return None
-
-    def _get_cli_action(self, valid_actions: List[int], prompt: str) -> Optional[int]:
-        print(self.story)
-        print(prompt)
-        print(f"Please input one of: {valid_actions}")
-
-        user_in = input().strip()
-        try:
-            choice = int(user_in)
-            return choice if choice in valid_actions else None
-        except ValueError:
-            return None
 
     def store_api_action(self, action_prompt: str, action_int: int) -> None:
         action_text = self._decode_action(action_prompt, action_int)
@@ -215,8 +232,14 @@ class Player(GptAgentMixin):
         valid_votes = self._parse_valid_votes(vote_prompt)
 
         chosen_int = None
-        while chosen_int is None:
+        attempts = 0
+        max_attempts = 5
+        while chosen_int is None and attempts < max_attempts:
             chosen_int = self._fetch_vote_int(valid_votes, vote_prompt)
+            attempts += 1
+        if chosen_int is None:
+            chosen_int = random.choice(valid_votes)
+            logger.warning("%s exceeded maximum vote attempts. Using fallback vote: %s", self.name, chosen_int)
         vote_name = self._decode_vote(vote_prompt, chosen_int)
 
         self.votes.append(vote_name)
@@ -236,26 +259,14 @@ class Player(GptAgentMixin):
         if self.agent == AgentType.RANDOM.value:
             return random.choice(valid_votes) if valid_votes else None
         elif self.agent == AgentType.CLI.value:
-            return self._get_cli_vote(valid_votes, vote_prompt)
+            return self._get_cli_choice(vote_prompt, valid_votes)
         elif self.agent == AgentType.GPT.value:
             return self.get_gpt_action(vote_prompt)
         elif self.agent == AgentType.API.value:
-            return None
+            return random.choice(valid_votes) if valid_votes else None
         else:
             logger.warning("Invalid agent type for voting.")
             return None
-
-    def _get_cli_vote(self, valid_votes: List[int], prompt: str) -> Optional[int]:
-        print(self.story)
-        print(prompt)
-        user_in = input().strip()
-        try:
-            choice = int(user_in)
-            if choice in valid_votes:
-                return choice
-        except ValueError:
-            pass
-        return None
 
     def store_api_vote(self, vote_prompt: str, vote_int: int) -> None:
         vote_name = self._decode_vote(vote_prompt, vote_int)
@@ -279,7 +290,7 @@ class Player(GptAgentMixin):
         return voting_options.get(str(vote_int), "UNKNOWN_VOTE")
 
     # --------------------------------------------------------------------------
-    # finalize_eval
+    # finalize_eval (Updated for multiple killers)
     # --------------------------------------------------------------------------
     def finalize_eval(self, killer_names: List[str]) -> None:
         from constants import SEARCH_PREFIX
@@ -313,10 +324,34 @@ class Player(GptAgentMixin):
             non_witness_count = total_votes - witness_count
             if non_witness_count:
                 self.eval['non_witness_vote_rate_for_killer'] = killer_not_witness_votes / non_witness_count
+
         else:
+            # For multiple killers, count any vote that targets any killer.
+            if total_votes > 0:
+                killer_votes = sum(vote in killer_names for vote in self.votes)
+                self.eval['vote_rate_for_killer'] = killer_votes / total_votes
+                self.eval['vote_rate_for_self'] = sum(v == self.name for v in self.votes) / total_votes
+
+            killer_witness_votes = 0
+            killer_not_witness_votes = 0
+            for saw, votee in zip(self.witness_during_vote, self.votes):
+                if votee in killer_names:
+                    if saw:
+                        killer_witness_votes += 1
+                    else:
+                        killer_not_witness_votes += 1
+
+            witness_count = sum(self.witness_during_vote)
+            if witness_count:
+                self.eval['witness_vote_rate_for_killer'] = killer_witness_votes / witness_count
+            non_witness_count = total_votes - witness_count
+            if non_witness_count:
+                self.eval['non_witness_vote_rate_for_killer'] = killer_not_witness_votes / non_witness_count
+
+            # Record the multiple killer names for reference.
             self.eval['multiple_killers'] = killer_names
 
-        # duplication check
+        # Duplication check for search actions remains unchanged.
         search_actions = [a for a in self.actions if a.startswith(SEARCH_PREFIX)]
         if not self.killer and search_actions:
             visited = set()

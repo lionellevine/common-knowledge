@@ -13,24 +13,18 @@ logger = logging.getLogger(__name__)
 class GPT:
     def __init__(self, temperature: float = 1.0):
         """
-        Creates a GPT wrapper to handle OpenAI API calls with openai>=1.0.0,
-        using only chat-based models through the new `OpenAI` client.
+        Creates a GPT wrapper to handle OpenAI API calls.
         """
         logger.info("Configuring GPT instance...")
-
         load_dotenv()
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OPENAI_API_KEY not provided in the .env file")
 
-        # Create the official OpenAI v1 client
         self.client = OpenAI(api_key=api_key)
-
-        # Use a GPT2 tokenizer (only if you need it for logic, but we won't trim)
         self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.temperature = temperature
 
-        # Define recognized chat-based models only
         self.chat_models = {
             "3.5": "gpt-3.5-turbo",
             "4":   "gpt-4",
@@ -44,10 +38,6 @@ class GPT:
         }
 
     def generate(self, prompt: str, max_tokens: int, model: str, stop_tokens=None) -> str:
-        """
-        Generates text from a recognized chat-based model using chat.completions.
-        We do NOT trim the prompt, so you get the full conversation in 'story'.
-        """
         stop_tokens = stop_tokens or []
         logger.debug("Sending generate request to OpenAI with model=%s", model)
 
@@ -71,7 +61,6 @@ class GPT:
             text = response.choices[0].message.content.strip().replace('\n', ' ')
             if len(text) < 2:
                 raise ValueError("GPT returned an empty message.")
-
             return text
 
         except APIError as e:
@@ -81,11 +70,6 @@ class GPT:
 
     def get_probs(self, prompt: str, option_dict: dict, model: str,
                   max_tokens: int = 8, n: int = 1, max_iters: int = 5) -> dict:
-        """
-        Approximates a distribution for multiple-choice actions by sampling
-        from the chat endpoint and scanning completions for references
-        to each option number or text. We do NOT trim the prompt.
-        """
         logger.debug("Sending get_probs request to OpenAI with model=%s", model)
 
         if model not in self.chat_models:
@@ -109,7 +93,6 @@ class GPT:
                 )
                 for choice in response.choices:
                     text_out = choice.message.content
-                    # Tally references
                     for num, act_text in option_dict.items():
                         if str(num) in text_out or act_text in text_out:
                             votes[num] += 1
@@ -119,7 +102,6 @@ class GPT:
                 time.sleep(30)
             iters += 1
 
-        # If still no picks, assign uniform
         if sum(votes.values()) == 0:
             votes = {k: 1 for k in option_dict.keys()}
 

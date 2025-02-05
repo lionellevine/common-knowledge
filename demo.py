@@ -1,5 +1,4 @@
-#demo.py
-
+# demo.py
 import logging
 
 from environment import Game
