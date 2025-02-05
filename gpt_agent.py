@@ -41,8 +41,7 @@ class GptAgentMixin:
         logger.debug("Generating GPT statement for prompt:\n%s", prompt)
         if not hasattr(self, 'gpt') or not self.gpt:
             logger.warning("No gpt instance found; returning default statement.")
-            return "I don't know who the killer is."
-
+            return "I don't know what to say."
         response = self.gpt.generate(
             prompt=self.story + prompt,
             max_tokens=50,

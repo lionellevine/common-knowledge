@@ -14,16 +14,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 logging.basicConfig(level=logging.INFO)
 
 def run_job(num_games, eval_cols):
-    """
-    Runs `num_games`, each time using exactly 4 named players [Jacob, Kai, Archie, Luca].
-    - Randomly pick 1 as killer
-    - Randomly pick 1 as 'rules_alt' user
-    - The rest are 'rules' + not killer
-    After each game, append a short "comparison" row for alt vs. normal in terms of guess-killer rate, etc.
-    """
     eval_dict = {col: [] for col in eval_cols}
 
-    # We'll accumulate alt vs. rules data for final summary
     overall_summary = {
         "rules_alt": {"count": 0, "sum_vote_for_killer": 0.0},
         "rules":     {"count": 0, "sum_vote_for_killer": 0.0},
@@ -31,14 +23,11 @@ def run_job(num_games, eval_cols):
 
     for game_idx in range(1, num_games + 1):
         start_time = time.time()
-
-        # 1) Randomly assign the roles
         name_list = ["Jacob", "Kai", "Archie", "Luca"]
-        random.shuffle(name_list)  # shuffle the 4 names
-        killer_name = random.choice(name_list)  # pick 1 killer
-        alt_name = random.choice(name_list)     # pick 1 to have rules_alt
+        random.shuffle(name_list)
+        killer_name = random.choice(name_list)
+        alt_name = random.choice(name_list)
 
-        # 2) Build the 4 players
         players = []
         for nm in name_list:
             is_killer = (nm == killer_name)
@@ -47,35 +36,27 @@ def run_job(num_games, eval_cols):
                 name=nm,
                 killer=is_killer,
                 preprompt=pp,
-                agent="gpt-4o-mini-2024-07-18"  # or "gpt" or whichever
+                agent="gpt-4o-mini-2024-07-18"
             )
             players.append(p)
 
-        # 3) Create the Game, load the 4 players
         game = Game(discussion=True)
         game.load_players(players)
 
-        # 4) Insert a "GameHeader" row describing the players
         insert_game_header_row(eval_dict, game_idx, name_list, alt_name, killer_name)
 
-        # 5) Play the game
         results = game.play()
         end_time = time.time()
         runtime = end_time - start_time
 
-        # 6) Insert normal player rows into the CSV
         for player_res in results:
             insert_player_result_row(eval_dict, game_idx, runtime, 4, True, player_res)
-
-            # We'll also update overall_summary
             pre = player_res.get("preprompt", "rules")
             if pre not in ("rules_alt", "rules"):
                 pre = "rules"
-
             overall_summary[pre]["count"] += 1
             overall_summary[pre]["sum_vote_for_killer"] += player_res.get("vote_rate_for_killer", 0.0)
 
-        # 7) Insert a Stats row from the environment code
         banished_count = sum(r.get("banished", 0) for r in results)
         killed_count   = sum(r.get("killed", 0) for r in results)
         escaped_count  = sum(r.get("escaped", 0) for r in results)
@@ -89,18 +70,13 @@ def run_job(num_games, eval_cols):
         )
         insert_special_row(eval_dict, stats_text)
 
-        # 8) Insert a "Comparison" row for alt vs. normal in this game
-        alt_vfk   = 0.0
-        alt_count = 0
-        rules_vfk   = 0.0
-        rules_count = 0
-
+        alt_vfk, alt_count, rules_vfk, rules_count = 0.0, 0, 0.0, 0
         for r in results:
             if r["preprompt"] == "rules_alt":
-                alt_vfk   += r.get("vote_rate_for_killer", 0.0)
+                alt_vfk += r.get("vote_rate_for_killer", 0.0)
                 alt_count += 1
             else:
-                rules_vfk   += r.get("vote_rate_for_killer", 0.0)
+                rules_vfk += r.get("vote_rate_for_killer", 0.0)
                 rules_count += 1
 
         alt_avg = alt_vfk / alt_count if alt_count > 0 else 0.0
@@ -114,7 +90,6 @@ def run_job(num_games, eval_cols):
         )
         insert_special_row(eval_dict, comp_text)
 
-        # 9) Insert an end-of-run row
         end_run_text = f"----- END OF RUN #{game_idx} ----- (runtime={runtime:.2f}s)"
         insert_special_row(eval_dict, end_run_text)
 
@@ -184,6 +159,7 @@ def get_save_path():
     return os.path.join(save_dir, f"{file_count}.csv")
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--job_number', type=int, required=True)
     parser.add_argument('--num_games', type=int, default=3, help="How many games in this job")

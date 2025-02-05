@@ -18,14 +18,7 @@ class Player(GptAgentMixin):
 
     VALID_LOCATIONS = ["Bedroom", "Bathroom", "Kitchen", "Hallway"]
 
-    def __init__(
-        self,
-        name: str,
-        killer: bool,
-        preprompt: str,
-        agent: str,
-        start_location: str = "random"
-    ):
+    def __init__(self, name: str, killer: bool, preprompt: str, agent: str, start_location: str = "random"):
         self.name = name
         self.killer = killer
         self.preprompt = preprompt
@@ -50,21 +43,19 @@ class Player(GptAgentMixin):
         self.invalid_votes_for_eliminated = 0
         self.eliminated_player_names: List[str] = []
 
-        # Start location
+        # Set starting location
         self.location = self._resolve_start_location(start_location)
 
-        # Determine final agent type (and model if GPT)
+        # Determine agent type and model if applicable
         self._parse_agent_type(agent)
 
         # Initialize evaluation dictionary
         self.eval = self._init_eval_dict()
 
-        logger.info(
-            "Initialized Player '%s'. Killer=%s, Agent='%s', Location='%s'",
-            self.name, self.killer,
-            f"{self.agent}{('-' + self.model) if self.model else ''}",
-            self.location
-        )
+        logger.info("Initialized Player '%s'. Killer=%s, Agent='%s', Location='%s'",
+                    self.name, self.killer,
+                    f"{self.agent}{('-' + self.model) if self.model else ''}",
+                    self.location)
 
     def set_eliminated_players(self, eliminated_list: List[str]) -> None:
         self.eliminated_player_names = eliminated_list[:]
@@ -99,7 +90,6 @@ class Player(GptAgentMixin):
             "actions": self.actions,
             "votes": self.votes,
         }
-
         if not self.killer:
             eval_dict.update({
                 "killed": False,
@@ -145,8 +135,8 @@ class Player(GptAgentMixin):
     # --------------------------------------------------------------------------
     def get_action(self, action_prompt: str) -> str:
         self.awaiting_response = True
+        logger.info("Action prompt for %s:\n%s", self.name, action_prompt)
         valid_actions = self._parse_valid_actions(action_prompt)
-
         if not valid_actions:
             logger.warning("No valid actions found for %s. Defaulting to 'No Action'.", self.name)
             self.actions.append("No Action")
@@ -164,7 +154,6 @@ class Player(GptAgentMixin):
             chosen_int = random.choice(valid_actions)
             logger.warning("%s exceeded maximum attempts. Using fallback action: %s", self.name, chosen_int)
         action_text = self._decode_action(action_prompt, chosen_int)
-
         self.actions.append(action_text)
         self.eval["num_turns"] += 1
         self.awaiting_response = False
@@ -212,9 +201,10 @@ class Player(GptAgentMixin):
     # Statements
     # --------------------------------------------------------------------------
     def get_statement(self, discussion_log: str) -> str:
+        logger.info("Discussion prompt for %s:\n%s", self.name, discussion_log)
         from constants import AgentType
         if self.agent == AgentType.RANDOM.value:
-            return "I don't know who the killer is."
+            return "I don't know what to say."
         elif self.agent == AgentType.CLI.value:
             print(self.story)
             print(discussion_log)
@@ -222,15 +212,15 @@ class Player(GptAgentMixin):
         elif self.agent == AgentType.GPT.value:
             return self._get_gpt_statement(discussion_log)
         else:
-            return "I don't know who the killer is."
+            return "I don't know what to say."
 
     # --------------------------------------------------------------------------
     # Votes
     # --------------------------------------------------------------------------
     def get_vote(self, vote_prompt: str) -> str:
+        logger.info("Vote prompt for %s:\n%s", self.name, vote_prompt)
         self.awaiting_response = True
         valid_votes = self._parse_valid_votes(vote_prompt)
-
         chosen_int = None
         attempts = 0
         max_attempts = 5
@@ -241,13 +231,17 @@ class Player(GptAgentMixin):
             chosen_int = random.choice(valid_votes)
             logger.warning("%s exceeded maximum vote attempts. Using fallback vote: %s", self.name, chosen_int)
         vote_name = self._decode_vote(vote_prompt, chosen_int)
-
+        # Avoid self-voting: if the vote candidate is yourself, choose an alternative.
+        if vote_name == self.name:
+            candidates = [v for v in valid_votes if self._decode_vote(vote_prompt, v) != self.name]
+            if candidates:
+                chosen_int = random.choice(candidates)
+                vote_name = self._decode_vote(vote_prompt, chosen_int)
+                logger.info("Self–vote avoided for %s; new vote candidate: %s", self.name, vote_name)
         self.votes.append(vote_name)
         self.witness_during_vote.append(self.witness)
-
         if vote_name in self.eliminated_player_names:
             self.invalid_votes_for_eliminated += 1
-
         self.awaiting_response = False
         return vote_name
 
@@ -290,7 +284,7 @@ class Player(GptAgentMixin):
         return voting_options.get(str(vote_int), "UNKNOWN_VOTE")
 
     # --------------------------------------------------------------------------
-    # finalize_eval (Updated for multiple killers)
+    # Finalize Evaluation
     # --------------------------------------------------------------------------
     def finalize_eval(self, killer_names: List[str]) -> None:
         from constants import SEARCH_PREFIX
@@ -302,13 +296,17 @@ class Player(GptAgentMixin):
 
         total_votes = len(self.eval['votes'])
 
+        # For non–killer players still alive, force "killed" flag to False.
+        if not self.killer and self.alive:
+            self.eval["killed"] = False
+
         if len(killer_names) == 0:
             pass
         elif len(killer_names) == 1:
             killer_name = killer_names[0]
             if total_votes > 0:
                 self.eval['vote_rate_for_self'] = sum(v == self.name for v in self.votes) / total_votes
-                self.eval['vote_rate_for_killer'] = sum(v == killer_name for v in self.votes) / total_votes
+                self.eval['vote_rate_for_killer'] = sum(vote == killer_name for vote in self.votes) / total_votes
 
             killer_witness_votes = 0
             killer_not_witness_votes = 0
@@ -324,9 +322,7 @@ class Player(GptAgentMixin):
             non_witness_count = total_votes - witness_count
             if non_witness_count:
                 self.eval['non_witness_vote_rate_for_killer'] = killer_not_witness_votes / non_witness_count
-
         else:
-            # For multiple killers, count any vote that targets any killer.
             if total_votes > 0:
                 killer_votes = sum(vote in killer_names for vote in self.votes)
                 self.eval['vote_rate_for_killer'] = killer_votes / total_votes
@@ -340,18 +336,14 @@ class Player(GptAgentMixin):
                         killer_witness_votes += 1
                     else:
                         killer_not_witness_votes += 1
-
             witness_count = sum(self.witness_during_vote)
             if witness_count:
                 self.eval['witness_vote_rate_for_killer'] = killer_witness_votes / witness_count
             non_witness_count = total_votes - witness_count
             if non_witness_count:
                 self.eval['non_witness_vote_rate_for_killer'] = killer_not_witness_votes / non_witness_count
-
-            # Record the multiple killer names for reference.
             self.eval['multiple_killers'] = killer_names
 
-        # Duplication check for search actions remains unchanged.
         search_actions = [a for a in self.actions if a.startswith(SEARCH_PREFIX)]
         if not self.killer and search_actions:
             visited = set()
@@ -362,3 +354,5 @@ class Player(GptAgentMixin):
                     duplicates += 1
                 visited.add(loc)
             self.eval['duplicate_search_rate'] = duplicates / len(search_actions)
+
+# End of agent.py
