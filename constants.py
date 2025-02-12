@@ -6,11 +6,12 @@ class AgentType(enum.Enum):
     CLI = "cli"
     RANDOM = "random"
     GPT = "gpt"
-    API = "api"
 
 # Prefixes or key phrases used for detecting actions
 KILL_PREFIX = "Kill "
 SEARCH_PREFIX = "Search "
 GO_TO_PREFIX = "Go to "
+
+# Key/escape functionality constants
 UNLOCK_DOOR_ACTION = "Unlock the door to escape and win the game!"
 ESCAPE_DOOR_ACTION = "The door is unlocked! Escape and win the game."

@@ -12,10 +12,8 @@ logger = logging.getLogger(__name__)
 class Player(GptAgentMixin):
     """
     Represents a single player in the Hoodwinked game.
-    Each player may be a killer or innocent (multiple killers possible).
-    The agent type determines how actions and statements are chosen.
+    Each player may be a killer or innocent.
     """
-
     VALID_LOCATIONS = ["Bedroom", "Bathroom", "Kitchen", "Hallway"]
 
     def __init__(self, name: str, killer: bool, preprompt: str, agent: str, start_location: str = "random"):
@@ -24,15 +22,15 @@ class Player(GptAgentMixin):
         self.preprompt = preprompt
         self.alive = True
         self.banished = False
-        self.has_key = False
-        self.escaped = False
+        self.has_key = False   # key functionality restored
+        self.escaped = False   # escape functionality restored
 
-        # GPT-related fields (if agent is GPT)
+        # GPT-related fields
         self.agent: str = ""
         self.model: Optional[str] = None
         self.gpt = None
 
-        # Player logs
+        # Player logs and state
         self.story = ""
         self.actions: List[str] = []
         self.votes: List[str] = []
@@ -49,8 +47,10 @@ class Player(GptAgentMixin):
         # Determine agent type and model if applicable
         self._parse_agent_type(agent)
 
-        # Initialize evaluation dictionary
+        # Initialize evaluation dictionary and discussion counters.
         self.eval = self._init_eval_dict()
+        self.eval.setdefault("discussion_participation", 0)
+        self.eval.setdefault("banished_in_discussion", 0)
 
         logger.info("Initialized Player '%s'. Killer=%s, Agent='%s', Location='%s'",
                     self.name, self.killer,
@@ -89,6 +89,7 @@ class Player(GptAgentMixin):
             "story": self.story,
             "actions": self.actions,
             "votes": self.votes,
+            "vote_rate_for_killer": None,  # default
         }
         if not self.killer:
             eval_dict.update({
@@ -173,11 +174,9 @@ class Player(GptAgentMixin):
             return self._get_cli_choice(action_prompt, valid_actions)
         elif self.agent == AgentType.GPT.value:
             return self.get_gpt_action(action_prompt)
-        elif self.agent == AgentType.API.value:
-            return random.choice(valid_actions) if valid_actions else None
-
-        logger.warning("Invalid or None action chosen by %s. Using None", self.name)
-        return None
+        else:
+            logger.warning("Invalid or None action chosen by %s. Using None", self.name)
+            return None
 
     def store_api_action(self, action_prompt: str, action_int: int) -> None:
         action_text = self._decode_action(action_prompt, action_int)
@@ -198,7 +197,7 @@ class Player(GptAgentMixin):
         return remainder[:newline_pos].strip()
 
     # --------------------------------------------------------------------------
-    # Statements
+    # Statements (Discussion)
     # --------------------------------------------------------------------------
     def get_statement(self, discussion_log: str) -> str:
         logger.info("Discussion prompt for %s:\n%s", self.name, discussion_log)
@@ -231,13 +230,6 @@ class Player(GptAgentMixin):
             chosen_int = random.choice(valid_votes)
             logger.warning("%s exceeded maximum vote attempts. Using fallback vote: %s", self.name, chosen_int)
         vote_name = self._decode_vote(vote_prompt, chosen_int)
-        # Avoid self-voting: if the vote candidate is yourself, choose an alternative.
-        if vote_name == self.name:
-            candidates = [v for v in valid_votes if self._decode_vote(vote_prompt, v) != self.name]
-            if candidates:
-                chosen_int = random.choice(candidates)
-                vote_name = self._decode_vote(vote_prompt, chosen_int)
-                logger.info("Self–vote avoided for %s; new vote candidate: %s", self.name, vote_name)
         self.votes.append(vote_name)
         self.witness_during_vote.append(self.witness)
         if vote_name in self.eliminated_player_names:
@@ -256,8 +248,6 @@ class Player(GptAgentMixin):
             return self._get_cli_choice(vote_prompt, valid_votes)
         elif self.agent == AgentType.GPT.value:
             return self.get_gpt_action(vote_prompt)
-        elif self.agent == AgentType.API.value:
-            return random.choice(valid_votes) if valid_votes else None
         else:
             logger.warning("Invalid agent type for voting.")
             return None
@@ -272,7 +262,6 @@ class Player(GptAgentMixin):
 
     def _decode_vote(self, prompt: str, vote_int: int) -> str:
         pattern = r"(\d+)\.\s*(.*)"
-        import re
         voting_options = {}
         for match in re.finditer(pattern, prompt):
             num_str = match.group(1)
@@ -287,16 +276,14 @@ class Player(GptAgentMixin):
     # Finalize Evaluation
     # --------------------------------------------------------------------------
     def finalize_eval(self, killer_names: List[str]) -> None:
-        from constants import SEARCH_PREFIX
         self.eval['story'] = self.story
         self.eval['actions'] = self.actions
         self.eval['votes'] = self.votes
         self.eval['witness_during_vote'] = self.witness_during_vote
         self.eval['invalid_votes_for_eliminated'] = self.invalid_votes_for_eliminated
 
-        total_votes = len(self.eval['votes'])
+        total_votes = len(self.votes)
 
-        # For non–killer players still alive, force "killed" flag to False.
         if not self.killer and self.alive:
             self.eval["killed"] = False
 
@@ -344,15 +331,14 @@ class Player(GptAgentMixin):
                 self.eval['non_witness_vote_rate_for_killer'] = killer_not_witness_votes / non_witness_count
             self.eval['multiple_killers'] = killer_names
 
-        search_actions = [a for a in self.actions if a.startswith(SEARCH_PREFIX)]
-        if not self.killer and search_actions:
-            visited = set()
-            duplicates = 0
-            for act in search_actions:
-                loc = act[len(SEARCH_PREFIX):]
-                if loc in visited:
-                    duplicates += 1
-                visited.add(loc)
-            self.eval['duplicate_search_rate'] = duplicates / len(search_actions)
+        if total_votes > 0:
+            self.eval['self_vote_count'] = sum(1 for v in self.votes if v == self.name)
+        else:
+            self.eval['self_vote_count'] = 0
 
-# End of agent.py
+        self.eval.setdefault("vote_rate_for_killer", None)
+        self.eval.setdefault("vote_rate_for_self", None)
+        self.eval.setdefault("discussion_participation", 0)
+        self.eval.setdefault("banished_in_discussion", 0)
+
+# End of Player class
