@@ -1,3 +1,4 @@
+# eval.py
 import os
 import logging
 import pandas as pd
@@ -9,10 +10,7 @@ logging.basicConfig(level=logging.INFO)
 def compute_individual_banish_rate(row):
     dp = row.get("discussion_participation", 0)
     bd = row.get("banished_in_discussion", 0)
-    if dp > 0:
-        return bd / dp
-    else:
-        return None
+    return bd / dp if dp > 0 else None
 
 def run_batch(num_games):
     all_game_results = []
@@ -21,10 +19,18 @@ def run_batch(num_games):
     for game_idx in range(1, num_games + 1):
         game = Game(discussion=True)
         players = [
-            Player("Dave",   killer=False, preprompt="prompt_2", agent="gpt-4o-mini-2024-07-18"),
-            Player("Archie", killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
-            Player("Mira",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
-            Player("Tom",    killer=True,  preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18")
+            Player("Liam",    killer=False, preprompt="prompt_2", agent="gpt-4o-mini-2024-07-18"),
+            Player("Noah",    killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Oliver",  killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("James",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Elijah",  killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("William", killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Benjamin",killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Lucas",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Henry",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Jacob",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Matthew", killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
+            Player("Tom",     killer=True,  preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18")
         ]
         game.load_players(players)
         results = game.play()  # List of evaluation dictionaries for this game
@@ -33,18 +39,13 @@ def run_batch(num_games):
         # Build a DataFrame from the game results and recompute banish_rate.
         df = pd.DataFrame(results)
         df["banish_rate"] = df.apply(compute_individual_banish_rate, axis=1)
-        # Include discussion participation and banish_rate in the selected keys.
         selected_keys = [
             "agent", "killer", "preprompt", "num_turns", "banished", 
             "escaped", "killed", "vote_rate_for_killer", "vote_rate_for_self", 
             "discussion_participation", "banish_rate"
         ]
-        df_subset = df.set_index("name")[selected_keys].transpose()
-        # Reorder columns as desired.
-        desired_order = ["Mira", "Dave", "Tom", "Archie"]
-        existing_names = [name for name in desired_order if name in df_subset.columns]
-        if existing_names:
-            df_subset = df_subset[existing_names]
+        # Set the index by player name and sort alphabetically before transposing.
+        df_subset = df.set_index("name")[selected_keys].sort_index().transpose()
         
         game_output = []
         header = "=" * 60 + f" Game #{game_idx} " + "=" * 60
@@ -57,7 +58,6 @@ def run_batch(num_games):
 
 def compute_overall_summary(all_results):
     df_all = pd.DataFrame(all_results)
-    # Compute individual banish rate.
     df_all["banish_rate"] = df_all.apply(compute_individual_banish_rate, axis=1)
     summary_records = []
     for pre in ["prompt_1", "prompt_2"]:
@@ -90,14 +90,21 @@ def compute_overall_summary(all_results):
     return pd.DataFrame(summary_records)
 
 def main():
-    num_games = 10  # Run 2 games
+    num_games = 5
     all_game_results, games_output_text = run_batch(num_games)
     overall_summary_df = compute_overall_summary(all_game_results)
     
-    # Get the prompts (printed only once at the end)
+    # Use the same ordered list of prompt keys as in demo.py
     temp_game = Game(discussion=True)
-    prompt1_text = temp_game.prompts.get("prompt_1", "No prompt_1 found.")
-    prompt2_text = temp_game.prompts.get("prompt_2", "No prompt_2 found.")
+    ordered_keys = [
+        "global_rules",
+        "prompt_1",
+        "identity_innocent_prompt_1",
+        "identity_killer_prompt_1",
+        "prompt_2",
+        "identity_innocent_prompt_2",
+        "identity_killer_prompt_2"
+    ]
     
     output_lines = []
     output_lines.append(games_output_text)
@@ -107,12 +114,12 @@ def main():
     output_lines.append("")
     output_lines.append("Prompts Used:")
     output_lines.append("")
-    output_lines.append("Prompt 1:")
-    output_lines.append(prompt1_text)
-    output_lines.append("")
-    output_lines.append("Prompt 2:")
-    output_lines.append(prompt2_text)
-    
+    for key in ordered_keys:
+        prompt_text = temp_game.prompts.get(key, f"No {key} found.")
+        output_lines.append(f"{key}:")
+        output_lines.append(prompt_text)
+        output_lines.append("")
+        
     final_output_text = "\n".join(output_lines)
     output_path = os.path.join("results", "final_evaluation.csv")
     with open(output_path, "w") as f:

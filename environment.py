@@ -182,7 +182,7 @@ class Game:
         print("\n------------------ Discussion Phase ------------------\n")
         killed_so_far = sorted([p.name for p in self.players if not p.alive])
         killed_info = (
-            f"Whispers in the corridors mention: {', '.join(killed_so_far)}"
+            f"Killed: {', '.join(killed_so_far)}"
             if killed_so_far else "No fatal act has been confirmed yet."
         )
         base_prompt = self.prompts["discussion"] + "\n" + killed_info + "\n"
@@ -452,12 +452,13 @@ class Game:
 
         # Identity instructions for killers:
         identity_killer_prompt_1 = (
-            "You are the killer. Your survival depends on concealing your true identity at all times. "
+            "You are the killer. Your objective is to eliminate the innocents swiftly and decisively. "
             "During discussions, choose your words with calculated precision to avoid raising any suspicion. "
             "Any careless remark might expose you.\n\n"
         )
         identity_killer_prompt_2 = (
-            "You are the killer. Although the atmosphere may seem relaxed, your duty is to blend in without revealing your dark intent. "
+            "You are the killer. Your goal is to take advantage of every opportunity to eliminate innocents while staying undetected." 
+            "Although the atmosphere may seem relaxed, your duty is to blend in without revealing your dark intent. "
             "Speak in a friendly, casual manner, but always ensure that no hint of your true purpose is given away.\n\n"
         )
 

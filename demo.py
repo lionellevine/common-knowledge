@@ -1,3 +1,4 @@
+# demo.py
 import logging
 from environment import Game
 from agent import Player
@@ -19,14 +20,12 @@ def main():
 
     # Create players.
     players = [
-       
         Player("Liam",   killer=False, preprompt="prompt_2", agent="gpt-4o-mini-2024-07-18"),
         Player("Oliver", killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
         Player("James",  killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
         Player("Ezra",   killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
         Player("Asher",  killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
-        Player("Mason",  killer=False, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
-        Player("Daniel", killer=True,  preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18")
+        Player("Mason",  killer=True, preprompt="prompt_1", agent="gpt-4o-mini-2024-07-18"),
     ]
 
     game.load_players(players)
@@ -43,6 +42,7 @@ def main():
         "discussion_participation", "banish_rate"
     ]
     df_subset = df.set_index("name")[selected_keys].transpose()
+    # (Optional) Reorder columns if desired. Here we check a desired order list:
     desired_order = ["Mira", "Dave", "Tom", "Archie"]
     existing_names = [name for name in desired_order if name in df_subset.columns]
     if existing_names:
@@ -76,10 +76,16 @@ def main():
     summary_df = pd.DataFrame(summary_records)
 
     # Section 3: Prompts Used (print once at the end)
-    prompt1_text = game.prompts.get("prompt_1", "No prompt_1 found.")
-    prompt2_text = game.prompts.get("prompt_2", "No prompt_2 found.")
-
-    # Build final output text preserving pretty format.
+    # Specify the order and keys you want to print
+    ordered_keys = [
+        "global_rules",
+        "prompt_1",
+        "identity_innocent_prompt_1",
+        "identity_killer_prompt_1",
+        "prompt_2",
+        "identity_innocent_prompt_2",
+        "identity_killer_prompt_2"
+    ]
     output_lines = []
     output_lines.append("Player Metrics (players as columns):")
     output_lines.append(df_subset.to_string())
@@ -89,12 +95,12 @@ def main():
     output_lines.append("")
     output_lines.append("Prompts Used:")
     output_lines.append("")
-    output_lines.append("Prompt 1:")
-    output_lines.append(prompt1_text)
-    output_lines.append("")
-    output_lines.append("Prompt 2:")
-    output_lines.append(prompt2_text)
-    
+    for key in ordered_keys:
+        prompt_text = game.prompts.get(key, f"No {key} found.")
+        output_lines.append(f"{key}:")
+        output_lines.append(prompt_text)
+        output_lines.append("")
+        
     output_text = "\n".join(output_lines)
     output_path = "results/demo.csv"
     with open(output_path, "w") as f:
