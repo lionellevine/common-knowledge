@@ -1,17 +1,28 @@
-# constants.py
+"""
+constants.py
+-------------
+This module defines global constants and enumerations that are used throughout the Hoodwinked game.
+These constants include the various agent types for controlling players and key prefixes for identifying
+specific game actions such as killing, searching, and moving.
+"""
+
 import enum
 
 class AgentType(enum.Enum):
-    """Enumerates the possible agent types."""
+    """
+    Enumerates the possible types of agents that can control a player.
+    
+    Attributes:
+        CLI: Represents a player controlled via a Command-Line Interface (human input).
+        RANDOM: Represents a player that makes random decisions.
+        GPT: Represents a player whose actions are generated using a GPT-based model.
+    """
     CLI = "cli"
     RANDOM = "random"
     GPT = "gpt"
 
-# Prefixes or key phrases used for detecting actions
-KILL_PREFIX = "Kill "
-SEARCH_PREFIX = "Search "
-GO_TO_PREFIX = "Go to "
-
-# Key/escape functionality constants
-UNLOCK_DOOR_ACTION = "Unlock the door to escape and win the game!"
-ESCAPE_DOOR_ACTION = "The door is unlocked! Escape and win the game."
+# Prefixes used to identify specific actions within player commands.
+# These are used in parsing and determining what type of action a player intends to perform.
+KILL_PREFIX = "Kill "      # Indicates a kill action (e.g., "Kill John")
+SEARCH_PREFIX = "Search "  # Indicates a search action (e.g., "Search the fridge")
+GO_TO_PREFIX = "Go to "    # Indicates a movement action (e.g., "Go to the Kitchen")
